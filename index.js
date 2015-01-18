@@ -42,7 +42,10 @@ function TChannel(options) {
 
 	this.options = options || {};
 	this.logger = this.options.logger || nullLogger;
+	// TODO rename the options.host field to options.ip
+	// TODO do not default the host.
 	this.host = this.options.host || '127.0.0.1';
+	// TODO do not default the port.
 	this.port = this.options.port || 4040;
 	this.name = this.host + ':' + this.port;
 	this.setTimeout = this.options.timers ?
@@ -61,7 +64,12 @@ function TChannel(options) {
 	this.endpoints = {};
 	this.destroyed = false;
 
+	// TODO do not create a tcp server in the constructor
+	// We should make TChannel agnostic of a TCP server.
+	// We should move this into a method
 	this.serverSocket = new net.createServer();
+	// TODO do not call listen by default. We might want to
+	// seperate allocating a server from calling listen on it.
 	this.serverSocket.listen(this.port, this.host);
 	this.serverSocket.on('listening', function () {
 		self.logger.info(self.name + ' listening');
@@ -261,6 +269,7 @@ function TChannelConnection(channel, socket, direction, remoteAddr) {
 		self.onFrame(frame);
 	});
 	this.parser.on('error', function (err) {
+		// TODO this method is not implemented.
 		self.onParserErr(err);
 	});
 
@@ -445,6 +454,9 @@ TChannelConnection.prototype.onFrame = function (frame) {
 		if (typeof handler === 'function') {
 			return new TChannelServerOp(this, handler, frame);
 		} else {
+			// TODO send back some kind of 404 message to the
+			// client. It's better if the client gets a not
+			// implemented error then a timeout error
 			this.logger.error('error: not found');
 		}
 	} else if (frame.header.type === types.res_complete_message) {
@@ -463,6 +475,10 @@ TChannelConnection.prototype.handleResCompleteMessage = function (frame) {
 		this.outPending--;
 		op.callback(null, frame.arg2, frame.arg3);
 	}
+	// TODO else case. We should warn about an incoming response
+	// for an operation we did not send out.
+	// This could be because of a timeout or could be because
+	// of a confused / corrupted server.
 };
 
 TChannelConnection.prototype.handleResError = function (frame) {
@@ -502,11 +518,17 @@ TChannelServerOp.prototype.onResponse = function (err, res1, res2) {
 
 	var newFrame = new TChannelFrame();
 	if (err) {
+		// TODO should the error response contain a head ?
+		// Is there any value in sending meta data along with
+		// the error.
 		var isError = typeof err === 'object' &&
 			(Object.prototype.toString.call(err) === '[object Error]' || err instanceof Error);
 		newFrame.set(isError ? err.message : err, null, null);
 		newFrame.header.type = types.res_error;
 	} else {
+		// TODO set a null buffer for arg1. I don't think we
+		// need to set the operation name we are responding to.
+		// The only reason I can think of is easy wire inspection
 		newFrame.set(this.reqFrame.arg1, res1, res2);
 		newFrame.header.type = types.res_complete_message;
 	}
@@ -522,9 +544,15 @@ TChannelConnection.prototype.send = function(options, arg1, arg2, arg3, callback
 
 	frame.set(arg1, arg2, arg3);
 	frame.header.type = types.req_complete_message;
+	// TODO This id will overflow at the 4 million messages mark
+	// This can create a very strange race condition where we
+	// call an very old operation with a long timeout if we
+	// send more then 4 million messages in a certain timeframe
 	frame.header.id = ++this.lastSentMessage;
 	frame.header.seq = 0;
 
+	// TODO check whether this outOps already exists in case
+	// we send more then 4 million messages in a time frame.
 	this.outOps[frame.header.id] = new TChannelClientOp(
 		options, frame, this.channel.now(), callback);
 	this.pendingCount++;
