@@ -515,11 +515,29 @@ TChannelConnection.prototype.handleReqFrame = function (frame) {
 	var handler = this.localEndpoints[op] || this.channel.endpoints[op];
 
 	if (typeof handler === 'function') {
-		new TChannelServerOp(this, handler, frame);
+		var self = this;
+		new TChannelServerOp(this, handler, frame, sendResponse);
 	} else {
 		this.logger.error('no such operation', {
 			op: op
 		});
+	}
+
+	function sendResponse(err, handlerErr, resFrame) {
+		if (err) {
+			self.logger.error(err);
+			return;
+		}
+		if (self.closing) {
+			return;
+		}
+		var op = self.inOps[resFrame.header.id];
+		if (!op) {
+			return;
+		}
+		delete self.inOps[resFrame.header.id];
+		self.inPending--;
+		self.socket.write(resFrame.toBuffer());
 	}
 };
 
@@ -541,20 +559,6 @@ TChannelConnection.prototype.completeOutOp = function (id, err, arg1, arg2) {
 	}
 };
 
-TChannelConnection.prototype.sendResFrame = function(frame) {
-	if (this.closing) {
-		return;
-	}
-
-	var op = this.inOps[frame.header.id];
-	if (op) {
-		delete this.inOps[frame.header.id];
-		this.inPending--;
-
-		return this.socket.write(frame.toBuffer());
-	}
-};
-
 // send a req frame
 /* jshint maxparams:5 */
 TChannelConnection.prototype.send = function(options, arg1, arg2, arg3, callback) {
@@ -572,15 +576,12 @@ TChannelConnection.prototype.send = function(options, arg1, arg2, arg3, callback
 };
 /* jshint maxparams:4 */
 
-function TChannelServerOp(connection, handler, reqFrame) {
+function TChannelServerOp(connection, handler, reqFrame, callback) {
 	this.connection = connection;
 	this.handler = handler;
 	this.reqFrame = reqFrame;
-	
-	var self = this;
-	handler(reqFrame.arg2, reqFrame.arg3, connection.remoteName, responseFrameBuilder(reqFrame, function responseBind(err, handlerErr, resFrame) {
-		self.onResponse(err, handlerErr, resFrame);
-	}));
+	callback = responseFrameBuilder(reqFrame, callback);
+	handler(reqFrame.arg2, reqFrame.arg3, connection.remoteName, callback);
 }
 
 function responseFrameBuilder(reqFrame, callback) {
@@ -600,14 +601,6 @@ function responseFrameBuilder(reqFrame, callback) {
 		callback(null, handlerErr, resFrame);
 	};
 }
-
-TChannelServerOp.prototype.onResponse = function (err, handlerErr, resFrame) {
-	if (err) {
-		this.connection.logger.error(err);
-	} else {
-		this.connection.sendResFrame(resFrame);
-	}
-};
 
 function isError(obj) {
 	return typeof obj === 'object' && (
