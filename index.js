@@ -507,19 +507,21 @@ TChannelConnection.prototype.onFrame = function (frame) {
 	}
 };
 
-TChannelConnection.prototype.handleReqFrame = function (frame) {
-	this.inOps[frame.header.id] = frame;
+TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
+	var self = this;
+	var id = reqFrame.header.id;
+	var name = reqFrame.arg1.toString();
+
+	this.inOps[id] = reqFrame;
 	this.inPending++;
 
-	var op = frame.arg1.toString();
-	var handler = this.localEndpoints[op] || this.channel.endpoints[op];
+	var handler = this.localEndpoints[name] || this.channel.endpoints[name];
 
 	if (typeof handler === 'function') {
-		var self = this;
-		new TChannelServerOp(this, handler, frame, sendResponse);
+		new TChannelServerOp(this, handler, reqFrame, sendResponse);
 	} else {
 		this.logger.error('no such operation', {
-			op: op
+			op: name
 		});
 	}
 
@@ -531,11 +533,11 @@ TChannelConnection.prototype.handleReqFrame = function (frame) {
 		if (self.closing) {
 			return;
 		}
-		var op = self.inOps[resFrame.header.id];
+		var op = self.inOps[id];
 		if (!op) {
 			return;
 		}
-		delete self.inOps[resFrame.header.id];
+		delete self.inOps[id];
 		self.inPending--;
 		self.socket.write(resFrame.toBuffer());
 	}
