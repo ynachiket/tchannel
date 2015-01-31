@@ -239,7 +239,17 @@ TChannel.prototype.quit = function (callback) {
 		sock.end();
 	});
 
-	onClose();
+	var serverSocket = this.serverSocket;
+	if (serverSocket.address()) {
+		closeServerSocket();
+	} else {
+		serverSocket.once('listening', closeServerSocket);
+	}
+
+	function closeServerSocket() {
+		serverSocket.once('close', onClose);
+		serverSocket.close();
+	}
 
 	function onClose() {
 		if (--counter <= 0) {
@@ -252,15 +262,6 @@ TChannel.prototype.quit = function (callback) {
 				callback();
 			}
 		}
-	}
-
-
-	if (this.serverSocket.address()) {
-		this.serverSocket.close();
-	} else {
-		this.serverSocket.once('listening', function onListen() {
-			self.serverSocket.close();
-		});
 	}
 };
 
