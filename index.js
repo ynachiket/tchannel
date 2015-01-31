@@ -512,18 +512,16 @@ TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
 	var id = reqFrame.header.id;
 	var name = reqFrame.arg1.toString();
 
-	this.inOps[id] = reqFrame;
-	this.inPending++;
-
 	var handler = this.localEndpoints[name] || this.channel.endpoints[name];
-
-	if (typeof handler === 'function') {
-		new TChannelServerOp(this, handler, reqFrame, sendResponse);
-	} else {
+	if (typeof handler !== 'function') {
 		this.logger.error('no such operation', {
 			op: name
 		});
+		return;
 	}
+
+	this.inPending++;
+	var op = this.inOps[id] = new TChannelServerOp(this, handler, reqFrame, sendResponse);
 
 	function sendResponse(err, handlerErr, resFrame) {
 		if (err) {
