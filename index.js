@@ -531,8 +531,7 @@ TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
 		if (self.closing) {
 			return;
 		}
-		var op = self.inOps[id];
-		if (!op) {
+		if (self.inOps[id] !== op) {
 			return;
 		}
 		delete self.inOps[id];
