@@ -534,9 +534,10 @@ TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
 		if (self.inOps[id] !== op) {
 			return;
 		}
+		var buf = resFrame.toBuffer();
 		delete self.inOps[id];
 		self.inPending--;
-		self.socket.write(resFrame.toBuffer());
+		self.socket.write(buf);
 	}
 };
 
