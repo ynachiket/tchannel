@@ -488,19 +488,7 @@ TChannelConnection.prototype.onFrame = function (frame) {
 		if (this.remoteName === null && this.onIdentify(frame) === false) {
 			return;
 		}
-		this.inOps[frame.header.id] = frame;
-		this.inPending++;
-
-		var op = frame.arg1.toString();
-		var handler = this.localEndpoints[op] || this.channel.endpoints[op];
-
-		if (typeof handler === 'function') {
-			return new TChannelServerOp(this, handler, frame);
-		} else {
-			this.logger.error('no such operation', {
-				op: op
-			});
-		}
+		this.handleReqFrame(frame);
 	} else if (frame.header.type === types.resCompleteMessage) {
 		this.handleResCompleteMessage(frame);
 	} else if (frame.header.type === types.resError) {
@@ -508,6 +496,22 @@ TChannelConnection.prototype.onFrame = function (frame) {
 	} else {
 		this.logger.error('unknown frame type', {
 			type: frame.header.type
+		});
+	}
+};
+
+TChannelConnection.prototype.handleReqFrame = function (frame) {
+	this.inOps[frame.header.id] = frame;
+	this.inPending++;
+
+	var op = frame.arg1.toString();
+	var handler = this.localEndpoints[op] || this.channel.endpoints[op];
+
+	if (typeof handler === 'function') {
+		new TChannelServerOp(this, handler, frame);
+	} else {
+		this.logger.error('no such operation', {
+			op: op
 		});
 	}
 };
