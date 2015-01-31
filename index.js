@@ -509,7 +509,9 @@ TChannelConnection.prototype.onFrame = function (frame) {
 		if (typeof handler === 'function') {
 			return new TChannelServerOp(this, handler, frame);
 		} else {
-			this.logger.error('not found');
+			this.logger.error('no such operation', {
+				op: op
+			});
 		}
 	} else if (frame.header.type === types.resCompleteMessage) {
 		this.handleResCompleteMessage(frame);
