@@ -20,6 +20,11 @@
 
 var farmhash = require('farmhash');
 
+// TODO: the frame structure should and constants should be in a separate
+// protocol module from the parser
+
+// TODO Can we please the lint beast? either except these, or use camelCase
+
 /* jshint camelcase:false */
 
 var types = {};
@@ -78,7 +83,7 @@ TChannelFrame.prototype.set = function (arg1, arg2, arg3) {
 		arg3 = '';
 	}
 
-	var type;
+	// var type; XXX unused
 
 	if (Buffer.isBuffer(arg1)) {
 		this.arg1 = arg1;
@@ -116,6 +121,10 @@ TChannelFrame.prototype.set = function (arg1, arg2, arg3) {
 };
 
 TChannelFrame.prototype.checksum = function () {
+	// TODO: why don't we checksum:
+	// - header.id
+	// - header.seq
+	// - header.type
 	var csum = farmhash.hash32(this.arg1);
 	if (this.arg2.length > 0) {
 		csum = farmhash.hash32WithSeed(this.arg2, csum);
@@ -145,6 +154,10 @@ TChannelFrame.prototype.toBuffer = function () {
 	offset += 4;
 	buf.writeUInt32BE(header.csum, offset, true);
 	offset += 4;
+
+	// NOTE: we could do final checksum of type / id / seq here rather than
+	// leaving it up to callers to get the order of mutation and calling .set
+	// right
 
 	this.arg1.copy(buf, offset);
 	offset += this.arg1.length;
@@ -177,7 +190,7 @@ require('util').inherits(TChannelParser, require('events').EventEmitter);
 
 TChannelParser.prototype.parseError = function(msg) {
 	this.emit('error', new Error(msg));
-	this.logger.error('parse error: ' + msg);
+	this.logger.error('parse error: ' + msg); // XXX typed error
 	this.pos = this.chunk.length;
 	this.state = states.error;
 };
@@ -187,6 +200,9 @@ TChannelParser.prototype.readType = function () {
 	this.state = states.read_id;
 	this.newFrame.header.type = newType;
 };
+
+// XXX both readInt and readStr would love to share a common read(n)... halve
+// the tmps... at least readInt could just use readStr(4)
 
 TChannelParser.prototype.readInt = function () {
 	if (this.tmpIntPos === 0 && this.chunk.length >= this.pos + 4) {
@@ -310,6 +326,8 @@ TChannelParser.prototype.execute = function (chunk) {
 			throw new Error('unknown state ' + this.state);
 		}
 	}
+	// XXX well... that's one way to implement a parser... there's quite a bit
+	// of needless state coupling in that bricolage that could by DRY-ed off
 };
 
 TChannelParser.prototype.emitAndReset = function () {

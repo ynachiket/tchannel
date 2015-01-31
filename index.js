@@ -61,6 +61,11 @@ function TChannel(options) {
 	this.peers = Object.create(null);
 
 	this.endpoints = Object.create(null);
+
+	this.endpoints['TChannel identify'] = function whoami(reqHead, reqBody, remoteAddr, cb) {
+		cb(null, self.name, remoteAddr);
+	};
+
 	this.destroyed = false;
 
 	this.serverSocket = new net.createServer();
@@ -101,12 +106,13 @@ TChannel.prototype.setPeer = function (name, conn) {
 	}
 
 	if (conn.direction === 'out') {
-		list.unshift(conn);
+		list.unshift(conn); // 0 ? shifts an old "out" to the "in" position?
 	} else {
-		list.push(conn);
+		list.push(conn); // 1 ?
 	}
 	return conn;
 };
+
 TChannel.prototype.getPeer = function (name) {
 	var list = this.peers[name];
 	return list && list[0] ? list[0] : null;
@@ -120,10 +126,11 @@ TChannel.prototype.removePeer = function (name, conn) {
 		return;
 	}
 
-	list.splice(index, 1);
+	list.splice(index, 1); // implicitly converts an in to an out when removing out?
 };
 
 TChannel.prototype.getPeers = function () {
+	// mixes ins and outs together?
 	var keys = Object.keys(this.peers);
 
 	var peers = [];
@@ -148,10 +155,11 @@ TChannel.prototype.addPeer = function (name, connection) {
 	}
 
 	var existingPeer = this.getPeer(name);
-	if (existingPeer !== null && existingPeer !== connection) {
+	if (existingPeer !== null && existingPeer !== connection) { // how about === undefined?
 		this.logger.warn('allocated a connection twice', {
 			name: name,
 			direction: connection.direction
+			// nice to have some connection peer info?
 		});
 	}
 
@@ -159,6 +167,7 @@ TChannel.prototype.addPeer = function (name, connection) {
 		source: this.name,
 		destination: name,
 		direction: connection.direction
+		// nice to have some connection peer info?
 	});
 	var self = this;
 	connection.on('reset', function (/* err */) {
@@ -277,15 +286,13 @@ function TChannelConnection(channel, socket, direction, remoteAddr) {
 	this.direction = direction;
 	this.remoteAddr = remoteAddr;
 	this.timer = null;
-
 	this.remoteName = null; // filled in by identify message
 
+	// TODO: smells like a missed abstraction
 	this.inOps = Object.create(null);
 	this.inPending = 0;
 	this.outOps = Object.create(null);
 	this.outPending = 0;
-
-	this.localEndpoints = Object.create(null);
 
 	this.lastSentMessage = 0;
 	this.lastTimeoutTime = 0;
@@ -318,12 +325,8 @@ function TChannelConnection(channel, socket, direction, remoteAddr) {
 		}
 	});
 
-	this.localEndpoints['TChannel identify'] = function (arg1, arg2, hostInfo, cb) {
-		cb(null, self.channel.name, null);
-	};
-
 	if (direction === 'out') {
-		this.send({}, 'TChannel identify', this.channel.name, null, function onOutIdentify(err, res1/*, res2 */) {
+		this.send({}, 'TChannel identify', this.channel.name, null, function onOutIdentify(err, resHead, resBody) {
 			if (err) {
 				self.channel.logger.error('identification error', {
 					remoteAddr: remoteAddr,
@@ -331,9 +334,14 @@ function TChannelConnection(channel, socket, direction, remoteAddr) {
 				});
 				return;
 			}
-			var remote = res1.toString();
-			self.remoteName = remote;
-			self.channel.emit('identified', remote);
+			var remoteName = resHead.toString();
+			var myRemoteAddr = resBody.toString();
+			self.remoteName = remoteName;
+			self.channel.emit('identified', {
+				connection: self,
+				remoteName: remoteName,
+				myRemoteAddr: myRemoteAddr
+			});
 		});
 	}
 
@@ -359,6 +367,7 @@ TChannelConnection.prototype.startTimeoutTimer = function () {
 	var self = this;
 
 	this.timer = this.channel.setTimeout(function () {
+		// self.timer = null; XXX would be nice, debatable
 		self.onTimeoutCheck();
 	}, this.getTimeoutDelay());
 };
@@ -374,6 +383,7 @@ TChannelConnection.prototype.clearTimeoutTimer = function () {
 // but if everything is timing out, then we should kill the connection.
 TChannelConnection.prototype.onTimeoutCheck = function () {
 	if (this.closing) {
+		// XXX debug log to taste?
 		return;
 	}
 
@@ -395,6 +405,8 @@ TChannelConnection.prototype.onTimeoutCheck = function () {
 			continue;
 		}
 		if (op === undefined) {
+			// y not null and empty string too? I mean I guess false and 0
+			// might be a thing, but really why not just !op?
 			this.channel.logger
 				.warn('unexpected undefined operation', {
 					key: opKey,
@@ -433,6 +445,7 @@ TChannelConnection.prototype.resetAll = function (err) {
 	//   own outgoing work, which is hard to cancel. By setting this.closing, we make sure
 	//   that once they do finish that their callback will swallow the response.
 	Object.keys(this.inOps).forEach(function (id) {
+		// TODO: we could support an op.cancel opt-in callback
 		delete self.inOps[id];
 	});
 
@@ -440,7 +453,7 @@ TChannelConnection.prototype.resetAll = function (err) {
 	Object.keys(this.outOps).forEach(function (id) {
 		var op = self.outOps[id];
 		delete self.outOps[id];
-		op.callback(err, null, null);
+		op.callback(err, null, null); // XXX shared mutable object... Object.create(err) ?
 	});
 
 	this.inPending = 0;
@@ -477,15 +490,14 @@ TChannelConnection.prototype.onIdentify = function (frame) {
 		this.channel.emit('identified', str2);
 		return true;
 	}
-
 	this.logger.error('first req on socket must be identify');
 	return false;
 };
 
 TChannelConnection.prototype.onFrame = function (frame) {
-//	this.logger.info(this.channel.name + ' got frame ' + frame.arg1 + ' ' + frame.arg2);
-
 	if (this.validateChecksum(frame) === false) {
+		// XXX cool story: 2x warns and an error... why not just one
+		// well-structured error log
 		this.logger.error("bad checksum");
 	}
 
@@ -512,8 +524,13 @@ TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
 	var id = reqFrame.header.id;
 	var name = reqFrame.arg1.toString();
 
-	var handler = this.localEndpoints[name] || this.channel.endpoints[name];
+	var handler = this.channel.endpoints[name];
 	if (typeof handler !== 'function') {
+		// TODO: test this behavior, in fact the prior early return subtlety
+		// broke tests in an unknown way after deferring the inOps mutation
+		// until after old handler verification without this... arguably it's
+		// what we want anyhow, but that weird test failure should be
+		// understood
 		handler = function(arg2, arg3, remoteAddr, cb) {
 			var err = new Error('no such operation');
 			err.op = name;
@@ -527,14 +544,18 @@ TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
 
 	function sendResponse(err, handlerErr, resFrame) {
 		if (err) {
-			self.logger.error(err);
+			self.logger.error(err); // TODO: augment
 			return;
 		}
 		if (self.closing) {
 			return;
 		}
 		if (self.inOps[id] !== op) {
+			// XXX y no log?
 			return;
+		}
+		if (handlerErr) {
+			self.logger.error(handlerErr); // TODO: augment
 		}
 		var buf = resFrame.toBuffer();
 		delete self.inOps[id];
@@ -558,6 +579,7 @@ TChannelConnection.prototype.completeOutOp = function (id, err, arg1, arg2) {
 		delete this.outOps[id];
 		this.outPending--;
 		op.callback(err, arg1, arg2);
+	// } else { // XXX y no log?
 	}
 };
 
@@ -591,7 +613,7 @@ function responseFrameBuilder(reqFrame, callback) {
 	var sent = false;
 	var resFrame = new TChannelFrame();
 	resFrame.header.id = id;
-	resFrame.header.seq = 0;
+	resFrame.header.seq = 0; // TODO: why 0? when get filled in?
 	return function (handlerErr, res1, res2) {
 		if (sent) {
 			return callback(new Error('response already sent', {
@@ -625,5 +647,11 @@ function TChannelClientOp(options, frame, start, callback) {
 	this.start = start;
 	this.timedOut = false;
 }
+
+// TODO: I suspect much to be gained from unifying client and server ops and
+// then abstracting inOps/outOps to some "ops collection"... note the server op
+// really could just be a callback(err, arg1, arg2) that happens to write a
+// frame... plus then this could set the ground for adding a server-side
+// timeout for handlers as a corollary  to client-side timeouts
 
 module.exports = TChannel;
