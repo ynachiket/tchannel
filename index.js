@@ -514,10 +514,11 @@ TChannelConnection.prototype.handleReqFrame = function (reqFrame) {
 
 	var handler = this.localEndpoints[name] || this.channel.endpoints[name];
 	if (typeof handler !== 'function') {
-		this.logger.error('no such operation', {
-			op: name
-		});
-		return;
+		handler = function(arg2, arg3, remoteAddr, cb) {
+			var err = new Error('no such operation');
+			err.op = name;
+			cb(err, null, null);
+		};
 	}
 
 	this.inPending++;
