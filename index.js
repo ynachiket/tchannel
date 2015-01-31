@@ -176,7 +176,7 @@ TChannel.prototype.send = function (options, arg1, arg2, arg3, callback) {
 	}
 
 	var dest = options.host;
-	if (!dest || dest.indexOf(':') === -1) {
+	if (!dest) {
 		throw new Error('cannot send() without options.host');
 	}
 
@@ -195,6 +195,9 @@ TChannel.prototype.getOutConnection = function (dest) {
 
 TChannel.prototype.makeSocket = function (dest) {
 	var parts = dest.split(':');
+	if (parts.length !== 2) {
+		throw new Error('invalid destination');
+	}
 	var host = parts[0];
 	var port = parts[1];
 	var socket = net.createConnection({host: host, port: port});
