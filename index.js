@@ -523,20 +523,20 @@ TChannelConnection.prototype.onFrame = function (frame) {
 };
 
 TChannelConnection.prototype.handleResCompleteMessage = function (frame) {
-	var op = this.outOps[frame.header.id];
-	if (op) {
-		delete this.outOps[frame.header.id];
-		this.outPending--;
-		op.callback(null, frame.arg2, frame.arg3);
-	}
+	this.completeOutOp(frame.header.id, null, frame.arg2, frame.arg3);
 };
 
 TChannelConnection.prototype.handleResError = function (frame) {
-	var op = this.outOps[frame.header.id];
+	var err = new Error(frame.arg1);
+	this.completeOutOp(frame.header.id, err, null, null);
+};
+
+TChannelConnection.prototype.completeOutOp = function (id, err, arg1, arg2) {
+	var op = this.outOps[id];
 	if (op) {
-		delete this.outOps[frame.header.id];
+		delete this.outOps[id];
 		this.outPending--;
-		return op.callback(new Error(frame.arg1), null, null);
+		op.callback(err, arg1, arg2);
 	}
 };
 
