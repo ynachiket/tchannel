@@ -29,6 +29,7 @@ var nullLogger = require('./null-logger.js');
 var globalClearTimeout = require('timers').clearTimeout;
 var globalSetTimeout = require('timers').setTimeout;
 var globalNow = Date.now;
+var globalRandom = Math.random;
 var farmhash = require('farmhash');
 var net = require('net');
 var inspect = require('util').inspect;
@@ -45,6 +46,8 @@ function TChannel(options) {
 	this.host = this.options.host || '127.0.0.1';
 	this.port = this.options.port || 4040;
 	this.name = this.host + ':' + this.port;
+	this.random = this.options.random ?
+		this.options.random : globalRandom;
 	this.setTimeout = this.options.timers ?
 		this.options.timers.setTimeout : globalSetTimeout;
 	this.clearTimeout = this.options.timers ?
@@ -350,7 +353,7 @@ require('util').inherits(TChannelConnection, require('events').EventEmitter);
 TChannelConnection.prototype.getTimeoutDelay = function () {
 	var base = this.channel.timeoutCheckInterval;
 	var fuzz = this.channel.timeoutFuzz;
-	return base + Math.round(Math.floor(Math.random() * fuzz) - (fuzz / 2));
+	return base + Math.round(Math.floor(this.channel.random() * fuzz) - (fuzz / 2));
 };
 
 TChannelConnection.prototype.startTimeoutTimer = function () {
