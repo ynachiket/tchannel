@@ -11,18 +11,18 @@ var server = new TChannel({host: '127.0.0.1', port: 4040});
 var client = new TChannel({host: '127.0.0.1', port: 4041});
 
 // normal response
-server.register('func 1', function (arg1, arg2, peerInfo, cb) {
-    console.log('func 1 responding immediately 1:' + arg1.toString() + ' 2:' + arg2.toString());
+server.register('func 1', function (reqHead, reqBody, peerInfo, cb) {
+    console.log('func 1 responding immediately 1:' + reqHead.toString() + ' 2:' + reqBody.toString());
     cb(null, 'result', 'indeed it did');
 });
 // err response
-server.register('func 2', function (arg1, arg2, peerInfo, cb) {
+server.register('func 2', function (reqHead, reqBody, peerInfo, cb) {
     cb(new Error('it failed'));
 });
-client.send({host: '127.0.0.1:4040'}, 'func 1', "arg 1", "arg 2", function (err, res1, res2) {
-    console.log('normal res: ' + res1.toString() + ' ' + res2.toString());
+client.send({host: '127.0.0.1:4040'}, 'func 1', "arg 1", "arg 2", function (err, resHead, resBody) {
+    console.log('normal res: ' + resHead.toString() + ' ' + resBody.toString());
 });
-client.send({host: '127.0.0.1:4040'}, 'func 2', "arg 1", "arg 2", function (err, res1, res2) {
+client.send({host: '127.0.0.1:4040'}, 'func 2', "arg 1", "arg 2", function (err, resHead, resBody) {
     console.log('err res: ' + err.message);
 });
 ```
@@ -89,9 +89,9 @@ tchannel : (options: {
     register: (op: String, fn: Function),
     send: (
         options: Object,
-        arg1: String,
-        arg2: Any,
-        arg3: Any,
+        op: String,
+        reqHead: Any,
+        reqBody: Any,
         cb: Function
     ) => void,
     quit: (Callback<Error>) => void,
@@ -198,13 +198,13 @@ This is used to avoid race conditions in the network.
 register: (
     op: String,
     fn: (
-        arg1: Buffer,
-        arg2: Buffer,
+        reqHead: Buffer,
+        reqBody: Buffer,
         hostInfo: String,
         cb: (
             err?: Error,
-            res1: Buffer | String | Object | Any,
-            res2: Buffer | String | Object | Any
+            resHead: Buffer | String | Object | Any,
+            resBody: Buffer | String | Object | Any
         ) => void
     ) => void
 ) => void
@@ -216,13 +216,13 @@ You can call `register` on a channel and it allows you to
 When you register an operation you must implement a very
     specific interface.
 
-#### `arg1`
+#### `reqHead`
 
 The first argument you take is the `head` send by the client.
 
 This will always be a `Buffer`
 
-#### `arg2`
+#### `reqBody`
 
 The second argument you take is the `body` send by the client.
 
@@ -233,7 +233,7 @@ This will always be a `Buffer`
 The third argument will be the host information of the calling
     client. This will be `{ip}:{port}`
 
-#### `cb(err, res1, res2)`
+#### `cb(err, resHead, resBody)`
 
 Your operation takes a callback as the fourth argument. This
     must always be called.
@@ -242,10 +242,10 @@ This should either be called with an err (`cb(err)`) or without
     an err (`cb(null, head, body)`).
 
 The `err` must always be an `Error`.
-The `res1` is the head to return to the client
-The `res2` is the body to return to the client.
+The `resHead` is the head to return to the client
+The `resBody` is the body to return to the client.
 
-`TChannel` will format the head (res1) and body (res2) for you
+`TChannel` will format the head (resHead) and body (resBody) for you
 
  - If you pass a `Buffer` it uses the buffer.
  - If you pass `undefined` it will cast it to `''`
@@ -254,7 +254,7 @@ The `res2` is the body to return to the client.
  - If you pass an `Object` it will JSON serialize it to a string
  - If you pass anything else it will call `toString()` on it.
 
-### `channel.send(options, arg1, arg2, arg3, cb)`
+### `channel.send(options, op, reqHead, reqBody, cb)`
 
 ```ocaml
 send: (
@@ -262,13 +262,13 @@ send: (
         host: String,
         timeout?: Number
     },
-    arg1: Buffer | String,
-    arg2: Buffer | String | Object | Any,
-    arg3: Buffer | String | Object | Any,
+    op: Buffer | String,
+    reqHead: Buffer | String | Object | Any,
+    reqBody: Buffer | String | Object | Any,
     cb: (
         err?: Error,
-        res1: Buffer,
-        res2: Buffer
+        resHead: Buffer,
+        resBody: Buffer
     ) => void
 ) => void
 ```
@@ -276,7 +276,7 @@ send: (
 `send()` is used for a channel to send an outgoing message
     to another channel.
 
-`TChannel` will format the head (arg2) and body (arg3) for you
+`TChannel` will format the head (reqHead) and body (reqBody) for you
 
  - If you pass a `Buffer` it uses the buffer.
  - If you pass `undefined` it will cast it to `''`
@@ -299,34 +299,34 @@ You should specify a timeout for this operation. This will
 This will call your callback with a timeout error if no response
     was received within the timeout.
 
-#### `arg1`
+#### `op`
 
 The first argument must be the name of the operation you want
     to call as a string or a buffer.
 
-#### `arg2`
+#### `reqHead`
 
 The second argument will be the `head` to send to the server,
-    this will be `arg1` in the servers operation function.
+    this will be `reqHead` in the servers operation function.
 
-#### `arg3`
+#### `reqBody`
 
 The third argument will be the `body` to send to the server.
-    This will be `arg2` in the servers operation function.
+    This will be `reqBody` in the servers operation function.
 
-#### `cb(err, res1, res2)`
+#### `cb(err, resHead, resBody)`
 
 When you `send()` a message to another tchannel server it will
     give you a callback
 
 The callback will either get called with `cb(err)` or with
-    `cb(null, res1, res2)`
+    `cb(null, resHead, resBody)`
 
  - `err` will either be `null` or an `Error`. This can be an
     error send from the remote server or another type of error
     like a timeout, IO or 404 error.
- - `res1` will be the `head` response from the server as a buffer
- - `res2` will be the `body` response from the server as a buffer
+ - `resHead` will be the `head` response from the server as a buffer
+ - `resBody` will be the `body` response from the server as a buffer
 
 ### `channel.quit(cb)`
 
